@@ -1,0 +1,1686 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <!-- Библиотека SheetJS для генерации нативного .xlsx -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Инженерный калькулятор параметров АФС и точности фотограмметрии (ГОСТ Р / СП)</title>
+    
+    <!-- KaTeX для формул -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <!-- Auto-render ОБЯЗАТЕЛЕН для парсинга $$ и $ в тексте -->
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js" onload="renderMathSafe()"></script>
+
+    <style>
+        :root {
+            --primary: #0f766e;
+            --primary-hover: #0d9488;
+            --primary-light: #f0fdfa;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border: #cbd5e1;
+            --danger: #ef4444;
+            --success: #059669;
+            --warning: #d97706;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg); color: var(--text-main); padding: 1.25rem; line-height: 1.5; }
+        .container { max-width: 1520px; margin: 0 auto; }
+
+        /* Шапка */
+        .app-top-header {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+            gap: 1rem; margin-bottom: 1.25rem; border-bottom: 2px solid var(--border); padding-bottom: 0.75rem;
+        }
+        .header-left-title { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+        .app-top-header h1 { font-size: 1.35rem; color: var(--text-main); font-weight: 700; }
+        .header-status-group { display: flex; align-items: center; gap: 0.75rem; }
+        .autosave-badge { font-size: 0.8rem; color: #047857; font-weight: 600; background: #ecfdf5; padding: 0.25rem 0.6rem; border-radius: 4px; border: 1px solid #a7f3d0; }
+        .btn-text-danger { background: none; border: none; color: var(--danger); font-size: 0.8rem; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0; }
+        .btn-text-danger:hover { color: #b91c1c; }
+
+        /* Вкладки */
+        .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+        .tab-btn { padding: 0.5rem 0.9rem; border: none; background: #e2e8f0; color: var(--text-main); border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.82rem; transition: all 0.15s; }
+        .tab-btn:hover { background: #cbd5e1; }
+        .tab-btn.active { background: var(--primary); color: #fff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Сетка */
+        .layout { display: flex; gap: 1.5rem; align-items: flex-start; }
+        .left-panel { flex: 3; display: flex; flex-direction: column; gap: 0.85rem; min-width: 0; }
+        .right-panel { flex: 1.6; position: sticky; top: 1rem; display: flex; flex-direction: column; gap: 1rem; min-width: 380px; max-height: calc(100vh - 2rem); overflow-y: auto; padding-right: 2px; }
+
+        /* Карточки и Формы */
+        .card { background-color: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .form-row { display: flex; gap: 0.75rem; margin-bottom: 0.65rem; }
+        .form-group { flex: 1; min-width: 0; }
+        .form-group label { display: block; margin-bottom: 0.25rem; font-weight: 600; font-size: 0.8rem; color: var(--text-muted); }
+        select, input[type="number"], input[type="text"] { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; font-size: 0.88rem; background: #fff; }
+        select:focus, input:focus { outline: none; border-color: var(--primary); }
+        .slider-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem; }
+        .slider-row input[type="range"] { flex: 1; accent-color: var(--primary); cursor: pointer; }
+
+        /* Правая колонка KPI */
+        .summary-box { background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1.25rem; border-radius: 8px; }
+        .summary-caption { text-align: center; font-size: 0.88rem; font-weight: 700; color: #065f46; text-transform: uppercase; letter-spacing: 0.5px; }
+        .summary-result { font-size: 3rem; font-weight: 800; color: var(--success); text-align: center; line-height: 1.1; margin: 0.3rem 0; }
+        .summary-subtext { text-align: center; font-size: 0.82rem; color: #047857; margin-bottom: 0.75rem; font-weight: 600; }
+
+        .export-actions-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+        .btn-export { background: #1e293b; color: #ffffff; font-weight: 600; font-size: 0.8rem; padding: 0.55rem 0.5rem; border-radius: 6px; border: none; cursor: pointer; text-align: center; }
+        .btn-export:hover { background: #0f172a; }
+        .btn-export-green { background: #065f46; }
+        .btn-export-green:hover { background: #047857; }
+
+        .kpi-subgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; margin-top: 0.5rem; }
+        .kpi-tile { background: #f8fafc; border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.75rem; text-align: center; }
+        .kpi-tile-title { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+        .kpi-tile-val { font-size: 1.25rem; font-weight: 800; color: #1e293b; margin: 0.15rem 0; }
+        .kpi-tile-desc { font-size: 0.7rem; color: var(--text-muted); }
+
+        /* Аккордеон */
+        .accordion-card { padding: 0; overflow: hidden; border-left: 5px solid var(--primary); }
+        .accordion-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.1rem; cursor: pointer; user-select: none; background: #ffffff; border-bottom: 1px solid #f1f5f9; }
+        .accordion-title { font-size: 0.95rem; font-weight: 700; color: var(--text-main); }
+        .accordion-body { padding: 1.1rem; }
+
+        /* Графические элементы */
+        .visual-tabs { display: flex; gap: 0.35rem; margin-bottom: 0.75rem; }
+        .visual-tab-btn { padding: 0.35rem 0.65rem; border: 1px solid var(--border); background: #f8fafc; font-size: 0.78rem; font-weight: 600; border-radius: 4px; cursor: pointer; }
+        .visual-tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+        .svg-canvas-container {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem;
+            min-height: 240px;
+        }
+
+        /* Бейджи */
+        .badge { padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; display: inline-block; }
+        .badge-green { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+        .badge-red { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+        /* Таблицы */
+        .norm-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-top: 0.5rem; }
+        .norm-table th, .norm-table td { border: 1px solid var(--border); padding: 0.75rem; text-align: left; vertical-align: top; }
+        .norm-table th { background: #f1f5f9; font-weight: 700; color: #1e293b; }
+        .norm-table tr:hover { background: #f8fafc; }
+
+        @media (max-width: 1080px) {
+            .layout { flex-direction: column; }
+            .right-panel { position: static; width: 100%; max-height: none; }
+        }
+    
+            /* Улучшенные стили для интерактивной геометрии */
+        .geom-hud-card {
+            display: flex;
+            gap: 1.25rem;
+            align-items: center;
+            width: 100%;
+        }
+        .geom-svg-box {
+            flex: 1.4;
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 0.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+            min-height: 280px;
+        }
+        .geom-info-pane {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+            font-size: 0.85rem;
+        }
+        .geom-info-item {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.55rem 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .geom-info-item span:first-child {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .geom-info-item span:last-child {
+            color: var(--text-main);
+            font-weight: 700;
+        }
+        @media (max-width: 900px) {
+            .geom-hud-card { flex-direction: column; }
+            .geom-svg-box { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header class="app-top-header">
+        <div class="header-left-title">
+            <h1>Сервис расчета параметров АФС и точности фотограмметрии</h1>
+            <span class="badge badge-green">ГОСТ Р 59562-2021 / ГОСТ Р 59328-2021 / СП 317 / СП 126</span>
+        </div>
+        <div class="header-status-group">
+            <span class="autosave-badge">✓ Автоматический расчет активен</span>
+            <button class="btn-text-danger" onclick="resetDefaults()">Сбросить на DJI Mavic 3E</button>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab-btn active" onclick="switchMainTab('calc')">📐 Калькулятор параметров АФС</button>
+        <button class="tab-btn" onclick="switchMainTab('audit')">📋 Нормативный аудит и допуски</button>
+        <button class="tab-btn" onclick="switchMainTab('geodesy')">📍 Геодезическое обеспечение (ОПО/КТ)</button>
+        <button class="tab-btn" onclick="switchMainTab('legal')">⚖️ Законность полетов (ПП №138, №658)</button>
+        <button class="tab-btn" onclick="switchMainTab('theory')">📚 Нормативная база и математический аппарат</button>
+    </nav>
+
+    <!-- ВКЛАДКА 1: КАЛЬКУЛЯТОР -->
+    <div id="tab-calc" class="tab-content active">
+        <div class="card" style="margin-bottom: 0.85rem; padding: 0.75rem 1.1rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 2; min-width: 250px;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Целевой вид работ и регламент точности:</label>
+                <select id="taskPresetSelect" onchange="applyTaskPreset()">
+                    <option value="cadastral">Кадастровые работы (Приказ Росреестра № П/0393 / СКП границ ≤ 0.10 м)</option>
+                    <option value="earthworks">Подсчет объемов земляных масс / Исполнительная съемка (СП 126 / СКП_h ≤ 0.05-0.10 м)</option>
+                    <option value="topo_500">Инженерно-топографический план М 1:500 (СП 317 / сечение 0.5 м)</option>
+                    <option value="linear_1000">Линейные объекты и промплощадки М 1:1000 (ГОСТ Р 59328 / сечение 1.0 м)</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Тип платформы БАС:</label>
+                <select id="droneTypeSelect" onchange="recalc()">
+                    <option value="copter">Мультироторный дрон (квадро/гексакоптер)</option>
+                    <option value="plane">Беспилотное крыло (самолетного типа)</option>
+                </select>
+            </div>
+            <div style="flex: 1; min-width: 180px;">
+                <label style="font-size: 0.78rem; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Крепление камеры (ГОСТ Р 59328, табл. Б.1/Б.2, п. 6.2.5):</label>
+                <select id="gimbalSelect" onchange="recalc()">
+                    <option value="yes">С гироплатформой (гиростабилизированный подвес)</option>
+                    <option value="mount">Аэрофотоустановка без гироплатформы</option>
+                    <option value="no">Без аэрофотоустановки (жесткое крепление): +7% / +3%</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="layout">
+            <div class="left-panel">
+                <!-- Блок 1: Камера -->
+                <div class="card accordion-card">
+                    <div class="accordion-header">
+                        <span class="accordion-title">📷 1. Съемочная камера и сенсор</span>
+                        <span class="badge" id="cameraPresetBadge" style="background:#f1f5f9; color:#475569;">DJI Mavic 3 Enterprise</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1.5;">
+                                <label>Пресет камеры:</label>
+                                <select id="camSelect" onchange="applyCameraPreset()">
+                                <optgroup label="DJI (Квадрокоптеры и подвесы)">
+                                    <option value="m3e">DJI Mavic 3 Enterprise (4/3" 20MP, f=12.29 мм, p=3.30 мкм)</option>
+                                    <option value="m3m">DJI Mavic 3 Multispectral RGB (4/3" 20MP, f=12.29 мм, p=3.30 мкм)</option>
+                                    <option value="phantom4rtk">DJI Phantom 4 RTK (1" 20MP, f=8.80 мм, p=2.41 мкм)</option>
+                                    <option value="p1_35">DJI Zenmuse P1 [35mm] (Full-Frame 45MP, f=35.0 мм, p=4.40 мкм)</option>
+                                    <option value="p1_24">DJI Zenmuse P1 [24mm] (Full-Frame 45MP, f=24.0 мм, p=4.40 мкм)</option>
+                                    <option value="p1_50">DJI Zenmuse P1 [50mm] (Full-Frame 45MP, f=50.0 мм, p=4.40 мкм)</option>
+                                    <option value="x5s">DJI Zenmuse X5S (MFT 20.8MP, f=15.0 мм, p=3.33 мкм)</option>
+                                    <option value="x7_24">DJI Zenmuse X7 [24mm] (Super 35 24MP, f=24.0 мм, p=3.91 мкм)</option>
+                                </optgroup>
+                                <optgroup label="Sony / Геоскан / БАС крылья">
+                                    <option value="sony_rx1r2">Sony DSC-RX1R II (Full-Frame 42.4MP, f=35.0 мм, p=4.51 мкм) — Геоскан 201</option>
+                                    <option value="sony_ilx_lr1">Sony ILX-LR1 [35mm] (Full-Frame 61MP, f=35.0 мм, p=3.76 мкм)</option>
+                                    <option value="sony_a7r4">Sony Alpha A7R IV / A7R V (Full-Frame 61MP, f=35.0 мм, p=3.76 мкм)</option>
+                                    <option value="sony_a6000">Sony Alpha A6000 / A6100 [16mm] (APS-C 24MP, f=16.0 мм, p=3.92 мкм)</option>
+                                    <option value="sony_a6000_20">Sony Alpha A6000 [20mm] (APS-C 24MP, f=20.0 мм, p=3.92 мкм)</option>
+                                </optgroup>
+                                <optgroup label="Autel Robotics">
+                                    <option value="autel_evo2_pro">Autel EVO II Pro RTK (1" 20MP, f=10.2 мм, p=2.41 мкм)</option>
+                                    <option value="autel_evo_lite_plus">Autel EVO Lite+ (1" 20MP, f=9.0 мм, p=2.41 мкм)</option>
+                                </optgroup>
+                                <optgroup label="senseFly / AgEagle (eBee)">
+                                    <option value="sensefly_soda">senseFly S.O.D.A. (1" 20MP, f=10.6 мм, p=2.41 мкм)</option>
+                                    <option value="sensefly_aeria_x">senseFly Aeria X (APS-C 24MP, f=18.5 мм, p=3.92 мкм)</option>
+                                </optgroup>
+                                <optgroup label="Phase One (Промышленная АФС)">
+                                    <option value="phaseone_ixm100_35">Phase One iXM-100 [35mm] (Medium Format 100MP, f=35.0 мм, p=3.76 мкм)</option>
+                                    <option value="phaseone_ixm100_80">Phase One iXM-100 [80mm] (Medium Format 100MP, f=80.0 мм, p=3.76 мкм)</option>
+                                </optgroup>
+                                <option value="custom">Пользовательская камера (ручной ввод)...</option>
+                            </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Фокусное расстояние $f$ (мм):</label>
+                                <input type="number" id="focalInput" value="12.29" step="0.01" min="1" max="500" oninput="onSensorParamChange()">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Размер матрицы (ширина $N_x$), пикс:</label>
+                                <input type="number" id="imgWInput" value="5280" min="500" max="50000" oninput="onSensorParamChange()">
+                            </div>
+                            <div class="form-group">
+                                <label>Размер матрицы (высота $N_y$), пикс:</label>
+                                <input type="number" id="imgHInput" value="3956" min="500" max="50000" oninput="onSensorParamChange()">
+                            </div>
+                            <div class="form-group">
+                                <label>Физический размер пикселя $p$ (мкм):</label>
+                                <input type="number" id="pixSizeInput" value="3.3" step="0.01" min="0.5" max="30" oninput="onSensorParamChange()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Блок 2: Полет -->
+                <div class="card accordion-card">
+                    <div class="accordion-header">
+                        <span class="accordion-title">✈️ 2. Высота, разрешение (GSD) и перекрытия</span>
+                        <span class="badge" id="flightQuickBadge" style="background:#f1f5f9; color:#475569;">H = 93 м | 80/70%</span>
+                    </div>
+                    <div class="accordion-body">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Пространственное разрешение ($GSD$), см/пикс:</label>
+                                <input type="number" id="gsdInput" value="2.50" step="0.1" min="0.2" max="50" oninput="onGsdInputChange()">
+                                <div class="slider-row">
+                                    <input type="range" id="gsdSlider" min="0.5" max="15.0" step="0.1" value="2.5" oninput="onGsdSliderChange()">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Высота полета над средней плоскостью $H$ (м):</label>
+                                <input type="number" id="altInput" value="93.1" step="1" min="5" max="5000" oninput="onAltInputChange()">
+                                <div class="slider-row">
+                                    <input type="range" id="altSlider" min="15" max="500" step="1" value="93" oninput="onAltSliderChange()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Продольное перекрытие ($P_x$), %:</label>
+                                <input type="number" id="overlapXInput" value="80" min="10" max="95" oninput="onOverlapXInputChange()">
+                                <div class="slider-row">
+                                    <input type="range" id="overlapXSlider" min="40" max="90" step="1" value="80" oninput="onOverlapXSliderChange()">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Поперечное перекрытие ($P_y$), %:</label>
+                                <input type="number" id="overlapYInput" value="70" min="10" max="95" oninput="onOverlapYInputChange()">
+                                <div class="slider-row">
+                                    <input type="range" id="overlapYSlider" min="20" max="85" step="1" value="70" oninput="onOverlapYSliderChange()">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Скорость полета БВС $V$ (м/с):</label>
+                                <input type="number" id="speedInput" value="10.0" step="0.5" min="1" max="100" oninput="recalc()">
+                            </div>
+                            <div class="form-group">
+                                <label>Выдержка затвора $t_{\text{exp}}$ (сек, 1/X):</label>
+                                <input type="text" id="shutterInput" value="1/1000" oninput="recalc()">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Макс. перепад высот на участке съемки $\Delta H$ (м):</label>
+                                <input type="number" id="reliefDiffInput" value="15" min="0" max="2000" oninput="recalc()">
+                            </div>
+                            <div class="form-group">
+                                <label>Тип местности (ГОСТ Р 59328, п. 6.2.1):</label>
+                                <select id="terrainSelect" onchange="recalc()"></select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Метод съемки / таблица перекрытий (ГОСТ Р 59328, п. 6.2.5):</label>
+                                <select id="surveyMethodSelect" onchange="recalc()">
+                                    <option value="b1">Межселенные территории / комбинированный метод (табл. Б.1)</option>
+                                    <option value="b2">Стереотопографический план многоэтажной застройки (табл. Б.2)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Высота зданий над средней плоскостью, м (для табл. Б.2):</label>
+                                <input type="number" id="bldHeightInput" value="15" min="0" max="500" oninput="recalc()">
+                            </div>
+                            <div class="form-group">
+                                <label>Макс. эффективный поперечный угол захвата β, °:</label>
+                                <input type="number" id="effAngleInput" value="15" min="1" max="90" step="0.5" oninput="recalc()">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Удаление от базовой ГНСС-станции (км):</label>
+                                <input type="number" id="baseDistInput" value="12" min="0" max="200" oninput="recalc()">
+                            </div>
+                            <div class="form-group">
+                                <label>Допустимое удаление по табл. Д.1 ГОСТ Р 59562 (км):</label>
+                                <input type="number" id="baseDistLimitInput" value="30" min="1" max="200" oninput="recalc()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Блок 3: Интерактивная векторная геометрия -->
+                <!-- Блок 3: Интерактивная геометрия проектирования и перекрытий -->
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                        <h3 style="font-size: 0.95rem; font-weight: 700;">📐 Интерактивная геометрия проектирования и перекрытий</h3>
+                        <div class="visual-tabs">
+                            <button class="visual-tab-btn active" id="btnVisPyramid" onclick="switchVisualTab('pyramid')">Пирамида кадра (2.5D)</button>
+                            <button class="visual-tab-btn" id="btnVisOverlap" onclick="switchVisualTab('overlap')">Полетная сетка и галсы</button>
+                            <button class="visual-tab-btn" id="btnVisGcp" onclick="switchVisualTab('gcp')">Чертеж опознака (ГОСТ)</button>
+                        </div>
+                    </div>
+                    <div class="svg-canvas-container" id="svgContainer" style="padding: 0.75rem; background: #ffffff;">
+                        <!-- Динамический контент SVG + HUD -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Правая колонка -->
+            <div class="right-panel">
+                <div class="card summary-box" id="mainKpiBox">
+                    <div class="summary-caption">Номинальное разрешение (GSD)</div>
+                    <div class="summary-result" id="kpiGsdVal">2.50 <span style="font-size: 1.5rem; font-weight: 600;">см/пикс</span></div>
+                    <div class="summary-subtext" id="kpiAltText">Высота фотографирования H = 93 м</div>
+                    <div style="text-align: center; margin-bottom: 0.75rem;">
+                        <span class="badge badge-green" id="kpiStatusBadge">✓ Требования нормативов соблюдены</span>
+                    </div>
+                    <div class="export-actions-grid">
+                        <button class="btn-export" onclick="showActModal()">📄 Паспорт АФС</button>
+                        <button class="btn-export btn-export-green" onclick="exportConfigJson()">💾 Экспорт JSON</button>
+                        <button class="btn-export" style="background:#047857;" onclick="exportConfigExcel()">📊 Excel (.xlsx)</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="font-size: 0.88rem; font-weight: 700; margin-bottom: 0.6rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem;">
+                        Геометрия кадра и базисы
+                    </h3>
+                    <div class="kpi-subgrid">
+                        <div class="kpi-tile">
+                            <div class="kpi-tile-title">Захват кадра ($W_g \times H_g$)</div>
+                            <div class="kpi-tile-val" id="tileFootprint">132×99 м</div>
+                            <div class="kpi-tile-desc">по средней плоскости</div>
+                        </div>
+                        <div class="kpi-tile">
+                            <div class="kpi-tile-title">Базис фото ($B_x$)</div>
+                            <div class="kpi-tile-val" id="tileBx">19.8 м</div>
+                            <div class="kpi-tile-desc">шаг спуска затвора</div>
+                        </div>
+                        <div class="kpi-tile">
+                            <div class="kpi-tile-title">Межмаршрут ($B_y$)</div>
+                            <div class="kpi-tile-val" id="tileBy">39.6 м</div>
+                            <div class="kpi-tile-desc">расстояние галсов</div>
+                        </div>
+                        <div class="kpi-tile">
+                            <div class="kpi-tile-title">Интервал съемки ($\Delta t$)</div>
+                            <div class="kpi-tile-val" id="tileDt">1.98 с</div>
+                            <div class="kpi-tile-desc" id="tileDtDesc">Норма затвора</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3 style="font-size: 0.88rem; font-weight: 700; margin-bottom: 0.6rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem;">
+                        Фотографическое качество и лимиты
+                    </h3>
+                    <div style="display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.82rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Смаз изображения ($\Delta s$):</span>
+                            <span style="font-weight: 700;" id="blurVal">0.40 пикс</span>
+                        </div>
+                        <div style="font-size: 0.72rem; color: var(--text-muted);" id="blurStatus">
+                            Допуск ГОСТ Р 59328 выдержан.
+                        </div>
+                        <hr style="border: none; border-top: 1px dashed var(--border); margin: 0.2rem 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span>Относительный перепад $\Delta H / H$:</span>
+                            <span style="font-weight: 700;" id="reliefRatioVal">16.1%</span>
+                        </div>
+                        <div style="font-size: 0.72rem;" id="reliefRatioStatus">
+                            Допустимо для всхолмленной местности (≤ 15%).
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ВКЛАДКА 2: АУДИТ И ДОПУСКИ -->
+    <div id="tab-audit" class="tab-content">
+        <div class="card">
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem;">Результаты нормативного аудита проекта АФС</h2>
+            <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Автоматическая проверка текущих проектных параметров на соответствие требованиям профильных ГОСТов и СП.
+            </p>
+            <div id="auditChecklistContainer" style="display: flex; flex-direction: column; gap: 0.65rem;">
+                <!-- Динамический список проверок -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ВКЛАДКА 3: ГЕОДЕЗИЧЕСКОЕ ОБЕСПЕЧЕНИЕ -->
+    <div id="tab-geodesy" class="tab-content">
+        <div class="card">
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem;">Расчет геодезического съемочного обоснования (ОПО / КТ)</h2>
+            <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Требования ГОСТ Р 59562-2021 (раздел 8) и СП 317.1325800.2017 к развитию геодезической основы и планово-высотной подготовке.
+            </p>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Площадь объекта съемки $S$ (кв. км):</label>
+                    <input type="number" id="surveyAreaInput" value="1.5" step="0.1" min="0.01" max="1000" oninput="calcGeodesy()">
+                </div>
+                <div class="form-group">
+                    <label>Масштаб создаваемого плана:</label>
+                    <select id="scaleSelectGeodesy" onchange="calcGeodesy()">
+                        <option value="500">1:500 (размер номенклатурного листа 250×250 м = 0.0625 км²)</option>
+                        <option value="1000">1:1000 (размер листа 500×500 м = 0.25 км²)</option>
+                        <option value="2000">1:2000 (размер листа 1000×1000 м = 1.0 км²)</option>
+                        <option value="5000">1:5000 (размер листа 2000×2000 м = 4.0 км²)</option>
+                    </select>
+                </div>
+            </div>
+            <label style="display:flex; align-items:center; gap:0.5rem; font-size:0.84rem; margin-top:0.25rem; cursor:pointer;">
+                <input type="checkbox" id="preciseCadastreCheck" checked onchange="calcGeodesy()">
+                Точные определения координат объектов недвижимости (СКП ≤ 0,10 / 0,20 м) — формула НЛ/90 + 2,5 по п. 8.3.3
+            </label>
+
+            <div class="card" style="background: #f8fafc; border-color: var(--border); margin-top: 1rem;" id="geodesyOutputCard">
+                <!-- Расчетные данные -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ВКЛАДКА 4: ЗАКОННОСТЬ ПОЛЕТОВ -->
+    <div id="tab-legal" class="tab-content">
+        <div class="card">
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem;">Правовое регулирование и порядок выполнения полетов БАС в РФ</h2>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem; font-size: 0.86rem; line-height: 1.55;">
+                <div style="border-left: 4px solid var(--primary); padding-left: 0.75rem;">
+                    <strong>1. Постановление Правительства РФ № 138 «Федеральные правила использования воздушного пространства РФ»:</strong>
+                    <p style="color: var(--text-muted); margin-top: 0.2rem;">
+                        Полеты БВС выполняются на основании плана полета воздушного судна и разрешения соответствующего органа местного самоуправления (при полетах над населенными пунктами). Для полетов в пределах прямой видимости на высотах менее 150 м вне диспетчерских зон и запретных зон действует упрощенный порядок представления плана полета.
+                    </p>
+                </div>
+                <div style="border-left: 4px solid var(--primary); padding-left: 0.75rem;">
+                    <strong>2. Постановление Правительства РФ № 658 «Правила учета беспилотных воздушных судов»:</strong>
+                    <p style="color: var(--text-muted); margin-top: 0.2rem;">
+                        БВС с максимальной взлетной массой от 0,15 до 30 кг подлежат учету в Росавиации (нижний порог 0,15 кг введен ПП № 415 от 19.03.2022) с нанесением учетного номера. БВС свыше 30 кг подлежат государственной регистрации (Воздушный кодекс РФ, ст. 33).
+                    </p>
+                </div>
+                <div style="border-left: 4px solid var(--primary); padding-left: 0.75rem;">
+                    <strong>2а. Постановление Правительства РФ от 02.02.2026 № 83 (удаленная идентификация):</strong>
+                    <p style="color: var(--text-muted); margin-top: 0.2rem;">
+                        С 01.03.2026 БАС оснащаются оборудованием удаленной идентификации с передачей сведений в ГАИС «ЭРА-ГЛОНАСС». Круг БВС и сроки уточняйте по тексту постановления.
+                    </p>
+                </div>
+                <div style="border-left: 4px solid var(--primary); padding-left: 0.75rem;">
+                    <strong>3. Закон РФ № 5485-1 «О государственной тайне» и контрольный просмотр материалов АФС:</strong>
+                    <p style="color: var(--text-muted); margin-top: 0.2rem;">
+                        Материалы АФС перед передачей заказчику проходят контрольный просмотр (отсмотр) представителями Минобороны РФ на предмет сведений, составляющих государственную тайну; для работы с такими сведениями исполнителю нужна лицензия ФСБ. ГОСТ Р 59562-2021 (п. 6.1.24) требует закладывать в план-график получение разрешений на АФС и контрольный просмотр. Порядок обсуждался к упрощению (Минтранс, 2025) — проверяйте актуальную редакцию на дату работ.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ВКЛАДКА 5: НОРМАТИВНАЯ БАЗА И ФОРМУЛЫ -->
+    <div id="tab-theory" class="tab-content">
+        <div class="card">
+            <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.6rem;">Нормативная база и математический аппарат калькулятора</h2>
+            <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 1rem;">
+                Сопоставление академических формул профильных стандартов и алгоритмов, реализованных в калькуляторе.
+            </p>
+
+            <div style="overflow-x: auto;">
+                <table class="norm-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25%;">Параметр / Источник</th>
+                            <th style="width: 35%;">Формула по стандарту</th>
+                            <th style="width: 40%;">Рабочая формула калькулятора</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Высота полета $H$ через $GSD$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59562-2021 (п. 6.2.3), ГОСТ Р 59328-2021 (п. 3.1.11)</span></td>
+                            <td>$$GSD = \frac{p \cdot H}{f}$$</td>
+                            <td>$$H = \frac{GSD_{[\text{см}]} \cdot 10 \cdot f_{[\text{мм}]}}{p_{[\text{мкм}]}}$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Продольный базис съемки $B_x$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГКИНП (ГНТА)-02-036-02</span></td>
+                            <td>$$B_x = L_x \cdot (1 - P_x)$$</td>
+                            <td>$$B_x = \frac{N_y \cdot GSD_{[\text{см}]}}{100} \cdot \left(1 - \frac{P_x}{100}\right)$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Поперечный базис $B_y$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГКИНП (ГНТА)-02-036-02</span></td>
+                            <td>$$B_y = L_y \cdot (1 - P_y)$$</td>
+                            <td>$$B_y = \frac{N_x \cdot GSD_{[\text{см}]}}{100} \cdot \left(1 - \frac{P_y}{100}\right)$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Интервал срабатывания $\Delta t$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59328-2021</span></td>
+                            <td>$$\Delta t = \frac{B_x}{V}$$</td>
+                            <td>$$\Delta t = \frac{B_x}{V_{[\text{м/с}]}}$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Линейный сдвиг (смаз $\Delta s$)</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59328-2021 (п. 5.2.2, п. 10.5)</span></td>
+                            <td id="thSmear"></td>
+                            <td>$$\Delta s_{[\text{пикс}]} = \frac{V_{[\text{м/с}]} \cdot 100 \cdot t_{\text{exp}[\text{с}]}}{GSD_{[\text{см}]}}$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Требуемые перекрытия</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59328-2021 (п. 6.2.5, прил. Б, табл. Б.1/Б.2)</span></td>
+                            <td id="thOvlRows"></td>
+                            <td id="thOvlAdd"></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Поперечное перекрытие по эффективному углу $\beta$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59328-2021 (п. 3.1.29, п. 6.2.5, ф. (1))</span></td>
+                            <td id="thBeta"></td>
+                            <td>$$P_y^{\min} = 100 \cdot \left(1 - \frac{2H \cdot \tan(\beta_{\max}/2)}{W_g}\right),\ \%$$</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Рекомендуемый GSD</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59562-2021 (п. 6.2.3, прил. Б, табл. Б.1)</span></td>
+                            <td id="thGsdTable"></td>
+                            <td id="thGsdNote"></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Размер марки опознака $D$</strong><br><span style="font-size: 0.75rem; color:var(--text-muted);">ГОСТ Р 59562-2021 (п. 8.3.10)</span></td>
+                            <td id="thMarker"></td>
+                            <td id="thMarker2"></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Нормативная база: единственный источник нормативных значений (window.AFS_DB) -->
+<script src="database.js"></script>
+<script>
+    // Пресеты сенсоров
+    const CAM_PRESETS = {
+        // DJI
+        m3e: { name: "DJI Mavic 3 Enterprise", f: 12.29, imgW: 5280, imgH: 3956, pix: 3.30 },
+        m3m: { name: "DJI Mavic 3 Multispectral RGB", f: 12.29, imgW: 5280, imgH: 3956, pix: 3.30 },
+        phantom4rtk: { name: "DJI Phantom 4 RTK", f: 8.80, imgW: 5472, imgH: 3648, pix: 2.41 },
+        p1_35: { name: "DJI Zenmuse P1 (35mm)", f: 35.0, imgW: 8192, imgH: 5460, pix: 4.40 },
+        p1_24: { name: "DJI Zenmuse P1 (24mm)", f: 24.0, imgW: 8192, imgH: 5460, pix: 4.40 },
+        p1_50: { name: "DJI Zenmuse P1 (50mm)", f: 50.0, imgW: 8192, imgH: 5460, pix: 4.40 },
+        x5s: { name: "DJI Zenmuse X5S (15mm)", f: 15.0, imgW: 5280, imgH: 3956, pix: 3.33 },
+        x7_24: { name: "DJI Zenmuse X7 (24mm)", f: 24.0, imgW: 6016, imgH: 4008, pix: 3.91 },
+
+        // Sony / Геоскан
+        sony_rx1r2: { name: "Sony DSC-RX1R II (Геоскан 201)", f: 35.0, imgW: 7952, imgH: 5304, pix: 4.51 },
+        sony_ilx_lr1: { name: "Sony ILX-LR1 (35mm)", f: 35.0, imgW: 9504, imgH: 6336, pix: 3.76 },
+        sony_a7r4: { name: "Sony Alpha A7R IV/V (35mm)", f: 35.0, imgW: 9504, imgH: 6336, pix: 3.76 },
+        sony_a6000: { name: "Sony Alpha A6000 (16mm)", f: 16.0, imgW: 6000, imgH: 4000, pix: 3.92 },
+        sony_a6000_20: { name: "Sony Alpha A6000 (20mm)", f: 20.0, imgW: 6000, imgH: 4000, pix: 3.92 },
+
+        // Autel
+        autel_evo2_pro: { name: "Autel EVO II Pro RTK", f: 10.20, imgW: 5472, imgH: 3648, pix: 2.41 },
+        autel_evo_lite_plus: { name: "Autel EVO Lite+", f: 9.00, imgW: 5472, imgH: 3648, pix: 2.41 },
+
+        // senseFly / AgEagle
+        sensefly_soda: { name: "senseFly S.O.D.A.", f: 10.60, imgW: 5472, imgH: 3648, pix: 2.41 },
+        sensefly_aeria_x: { name: "senseFly Aeria X", f: 18.50, imgW: 6000, imgH: 4000, pix: 3.92 },
+
+        // Phase One
+        phaseone_ixm100_35: { name: "Phase One iXM-100 (35mm)", f: 35.0, imgW: 11664, imgH: 8750, pix: 3.76 },
+        phaseone_ixm100_80: { name: "Phase One iXM-100 (80mm)", f: 80.0, imgW: 11664, imgH: 8750, pix: 3.76 }
+    };
+
+    // Все нормативные значения — только из database.js (window.AFS_DB). Здесь чисел норм нет.
+    const AFS_DB = window.AFS_DB;
+    if (!AFS_DB || !AFS_DB.rules) {
+        document.addEventListener('DOMContentLoaded', () => {
+            document.body.insertAdjacentHTML('afterbegin',
+                '<div style="background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;font-weight:600;">' +
+                'Не загружена нормативная база database.js. Положите файл database.js в ту же папку, что и index.html, и обновите страницу.</div>');
+        });
+        throw new Error('database.js (window.AFS_DB) не загружен');
+    }
+    const RULES = AFS_DB.rules;
+    // Пресеты задач: maxGsd/minPx/minPy — проектные пороги (практика), normGsd/gsdSrc — норматив
+    const TASK_PRESETS = AFS_DB.task_presets;
+    const OVL_59328_B1 = RULES.overlap.b1.rows;   // ГОСТ Р 59328-2021, прил. Б, табл. Б.1
+    const OVL_59328_B2 = RULES.overlap.b2.rows;   // ГОСТ Р 59328-2021, прил. Б, табл. Б.2
+    const SMEAR_MAX = RULES.smear.max_px;         // ГОСТ Р 59328-2021, п. 5.2.2, 10.5
+    const fmtNum = (x) => String(x).replace('.', ',');
+    const fmtTex = (x) => String(x).replace('.', '{,}');   // десятичная запятая внутри формул KaTeX
+    const BETA_DEFAULT = RULES.overlap.effective_angle.default_deg;
+    const BASE_LIMIT_DEFAULT = RULES.base_station.default_limit_km;
+    const RELIEF_DEFAULT = RULES.relief.default_pct;
+
+    // Заполнение интерфейса значениями из базы (выполняется сразу, до рендера формул KaTeX)
+    (function initFromRules() {
+        const terr = document.getElementById('terrainSelect');
+        if (terr) {
+            terr.innerHTML = RULES.relief.classes.map(c =>
+                `<option value="${c.max_pct}"${c.max_pct === RELIEF_DEFAULT ? ' selected' : ''}>` +
+                `${c.name.charAt(0).toUpperCase() + c.name.slice(1)} (ΔH ≤ ${c.max_pct}% H)</option>`).join('');
+        }
+        const beta = document.getElementById('effAngleInput');
+        if (beta) beta.value = BETA_DEFAULT;
+        const bl = document.getElementById('baseDistLimitInput');
+        if (bl) bl.value = BASE_LIMIT_DEFAULT;
+
+        const set = (id, html) => { const el = document.getElementById(id); if (el) el.innerHTML = html; };
+        const b1 = RULES.overlap.b1, b2 = RULES.overlap.b2, g = RULES.gsd, m = RULES.control_points.marker;
+        set('thSmear', `$$\\Delta s = \\frac{V \\cdot t_{\\text{exp}}}{GSD} \\le ${fmtTex(SMEAR_MAX)}\\text{ пикс}$$`);
+        set('thOvlRows', `Б.1: по $\\Delta H / H_\\text{ф}$ (${b1.rows.map(r => fmtNum(r.max.toFixed(2))).join(' / ')}); ` +
+            `Б.2: по $h_\\text{зд} / H_\\text{ф}$ (${fmtNum(b2.rows[0].max.toFixed(2))} … ${fmtNum(b2.rows[b2.rows.length - 1].max.toFixed(2))}); колонки «с гироплатформой / без»`);
+        set('thOvlAdd', `$$P^{\\text{треб}} = P_{\\text{табл}} + \\begin{cases} ${b1.add_without_mount_pct}\\% & \\text{Б.1, БВС без АФУ} \\\\ ${b2.add_without_mount_pct}\\% & \\text{Б.2, БВС без АФУ} \\end{cases}$$`);
+        set('thBeta', `$$\\beta \\le \\beta_{\\max}\\;(${fmtTex(BETA_DEFAULT)}^\\circ\\text{ по умолчанию})$$`);
+        set('thGsdTable', Object.entries(g.b1.by_scale).map(([sc, v]) =>
+            `1:${sc} — ${v}${sc === '2000' ? ` (${g.b1.dense_2000}*)` : ''}`).join('; ') + ' см');
+        set('thGsdNote', `* многоэтажная и плотная городская застройка; кадастр: ${Object.values(g.cadastre.by_rmse_m).join(' / ')} см при СКП ${Object.keys(g.cadastre.by_rmse_m).map(fmtNum).join(' / ')} м`);
+        set('thMarker', `$$D \\ge ${m.size_gsd} \\cdot GSD, \\quad b \\ge ${m.beam_gsd} \\cdot GSD$$`);
+        set('thMarker2', `$$D = ${m.size_gsd} \\cdot GSD_{[\\text{см}]}, \\quad b = ${m.beam_gsd} \\cdot GSD_{[\\text{см}]}$$`);
+    })();
+
+    // Точные H и GSD (без округления полей ввода) — для всех расчетов, паспорта и экспорта
+    function getExactGeom() {
+        const gsdField = getSafeNum('gsdInput', 2.5);
+        const hField = getSafeNum('altInput', 100);
+        return {
+            gsd: (exactGsd !== null && Math.abs(exactGsd - gsdField) < 0.006) ? exactGsd : gsdField,
+            H: (exactH !== null && Math.abs(exactH - hField) < 0.06) ? exactH : hField
+        };
+    }
+
+    // Требуемые перекрытия по ГОСТ Р 59328-2021, п. 6.2.5
+    function requiredOverlaps(reliefRatioPct, H, Wg) {
+        const method = document.getElementById('surveyMethodSelect').value;
+        const mount = document.getElementById('gimbalSelect').value;   // yes | mount | no
+        const col = mount === 'yes' ? 0 : 1;
+        const res = { method, mount, ok: true, px: null, py: null, pyFormula: null, row: '', table: '', add: 0 };
+
+        if (method === 'b2') {
+            const bld = getSafeNum('bldHeightInput', 15);
+            const r = H > 0 ? bld / H : 0;
+            const row = OVL_59328_B2.find(x => r <= x.max + 1e-9);
+            res.table = 'табл. Б.2';
+            res.add = mount === 'no' ? RULES.overlap.b2.add_without_mount_pct : 0;
+            if (!row) { res.ok = false; res.row = `h/Hф = ${r.toFixed(2)} > 0,25 — вне табл. Б.2 (увеличьте высоту фотографирования)`; return res; }
+            res.row = `h/Hф = ${r.toFixed(2)} → строка ≤ ${row.max.toFixed(2)}`;
+            res.px = row.px[col] + res.add;
+            res.py = row.py[col] + res.add;
+            return res;
+        }
+
+        const r = reliefRatioPct / 100;
+        const row = OVL_59328_B1.find(x => r <= x.max + 1e-9);
+        res.table = 'табл. Б.1';
+        res.add = mount === 'no' ? RULES.overlap.b1.add_without_mount_pct : 0;
+        if (!row) { res.ok = false; res.row = `ΔH/Hф = ${r.toFixed(2)} > 0,25 — вне табл. Б.1 (разделите участок или увеличьте высоту)`; return res; }
+        res.row = `ΔH/Hф = ${r.toFixed(2)} → ${row.name}`;
+        res.px = row.px[col] + res.add;
+        res.py = row.py[col] + res.add;
+        // Поперечное: не меньше значения, при котором эффективный поперечный угол захвата ≤ допустимого
+        // (по умолчанию — RULES.overlap.effective_angle). Эффективный угол (п. 3.1.29) ограничен направлениями
+        // на середины зон поперечного перекрытия: tg(β/2) = By / (2H)  →  Py_min = 100·(1 − 2H·tg(β/2) / Wg), %.
+        const beta = getSafeNum('effAngleInput', RULES.overlap.effective_angle.default_deg);
+        if (Wg > 0 && H > 0) {
+            const byMax = 2 * H * Math.tan(beta * Math.PI / 360);
+            res.pyFormula = Math.max(0, (1 - byMax / Wg) * 100);
+            res.beta = beta;
+        }
+        return res;
+    }
+
+    let currentVisualTab = 'pyramid';
+
+    // Жесткая валидация и ограничение вводимых значений
+    function bindInputClamp() {
+        document.querySelectorAll('input[type="number"]').forEach(inp => {
+            inp.addEventListener('change', function() {
+                let min = isNaN(parseFloat(this.min)) ? -Infinity : parseFloat(this.min);
+                let max = isNaN(parseFloat(this.max)) ? Infinity : parseFloat(this.max);
+                let val = parseFloat(this.value);
+                
+                if (isNaN(val)) {
+                    this.value = min !== -Infinity ? min : 0;
+                } else if (val < min) {
+                    this.value = min;
+                } else if (val > max) {
+                    this.value = max;
+                }
+                
+                // Форматирование до 2 знаков для GSD и Фокуса
+                if (this.id === 'gsdInput' || this.id === 'focalInput' || this.id === 'pixSizeInput') {
+                    this.value = parseFloat(this.value).toFixed(2);
+                }
+                recalc(); 
+            });
+        });
+    }
+
+    // Вспомогательный безопасный парсинг для расчетов
+    function getSafeNum(id, fallback) {
+        let el = document.getElementById(id);
+        if (!el) return fallback;
+        let val = parseFloat(el.value);
+        return (isNaN(val) || !isFinite(val)) ? fallback : val;
+    }
+
+    function parseShutter(str) {
+        if (!str) return 0.001;
+        str = String(str).trim();
+        if (str.includes('/')) {
+            const parts = str.split('/');
+            const num = parseFloat(parts[0]);
+            const den = parseFloat(parts[1]);
+            if (den && den > 0) return num / den;
+        }
+        const val = parseFloat(str);
+        return (!isNaN(val) && val > 0) ? val : 0.001;
+    }
+
+    // Инициализация при загрузке
+    window.addEventListener('DOMContentLoaded', () => {
+        bindInputClamp();
+        applyTaskPreset();
+        renderMathSafe();
+    });
+
+    function renderMathSafe() {
+        if (window.renderMathInElement) {
+            try {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        { left: "$$", right: "$$", display: true },
+                        { left: "$", right: "$", display: false }
+                    ],
+                    throwOnError: false
+                });
+            } catch (e) {
+                console.warn("KaTeX render error:", e);
+            }
+        }
+    }
+
+    function switchMainTab(tabId) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+        const target = document.getElementById(`tab-${tabId}`);
+        if (target) target.classList.add('active');
+
+        const activeBtn = Array.from(document.querySelectorAll('.tab-btn')).find(b => b.getAttribute('onclick').includes(tabId));
+        if (activeBtn) activeBtn.classList.add('active');
+
+        if (tabId === 'geodesy') calcGeodesy();
+        renderMathSafe();
+    }
+
+    function switchVisualTab(tabId) {
+        currentVisualTab = tabId;
+        document.querySelectorAll('.visual-tab-btn').forEach(b => b.classList.remove('active'));
+        const btn = document.getElementById(`btnVis${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+        if (btn) btn.classList.add('active');
+        recalc();
+    }
+
+    function applyCameraPreset() {
+        const val = document.getElementById('camSelect').value;
+        if (CAM_PRESETS[val]) {
+            const p = CAM_PRESETS[val];
+            document.getElementById('focalInput').value = p.f;
+            document.getElementById('imgWInput').value = p.imgW;
+            document.getElementById('imgHInput').value = p.imgH;
+            document.getElementById('pixSizeInput').value = p.pix;
+            document.getElementById('cameraPresetBadge').innerText = p.name;
+        } else {
+            document.getElementById('cameraPresetBadge').innerText = "Пользовательская";
+        }
+        recalcFromGsd();
+    }
+
+    function applyTaskPreset() {
+        const key = document.getElementById('taskPresetSelect').value;
+        const preset = TASK_PRESETS[key] || TASK_PRESETS.cadastral;
+
+        document.getElementById('gsdInput').value = preset.targetGsd.toFixed(2);
+        document.getElementById('gsdSlider').value = preset.targetGsd;
+
+        document.getElementById('overlapXInput').value = preset.px;
+        document.getElementById('overlapXSlider').value = preset.px;
+
+        document.getElementById('overlapYInput').value = preset.py;
+        document.getElementById('overlapYSlider').value = preset.py;
+
+        const scaleSel = document.getElementById('scaleSelectGeodesy');
+        if (scaleSel && preset.scale) scaleSel.value = String(preset.scale);
+        const preciseChk = document.getElementById('preciseCadastreCheck');
+        if (preciseChk) preciseChk.checked = !!preset.precise;
+
+        recalcFromGsd();
+    }
+
+    function resetDefaults() {
+        document.getElementById('camSelect').value = 'm3e';
+        document.getElementById('taskPresetSelect').value = 'cadastral';
+        document.getElementById('droneTypeSelect').value = 'copter';
+        document.getElementById('gimbalSelect').value = 'yes';
+        document.getElementById('speedInput').value = '10.0';
+        document.getElementById('shutterInput').value = '1/1000';
+        document.getElementById('reliefDiffInput').value = '15';
+        document.getElementById('baseDistInput').value = '12';
+        document.getElementById('baseDistLimitInput').value = BASE_LIMIT_DEFAULT;
+        document.getElementById('terrainSelect').value = String(RELIEF_DEFAULT);
+        document.getElementById('surveyMethodSelect').value = 'b1';
+        document.getElementById('bldHeightInput').value = '15';
+        document.getElementById('effAngleInput').value = BETA_DEFAULT;
+        applyCameraPreset();
+        applyTaskPreset();
+    }
+
+    function onGsdSliderChange() {
+        document.getElementById('gsdInput').value = document.getElementById('gsdSlider').value;
+        recalcFromGsd();
+    }
+
+    function onGsdInputChange() {
+        document.getElementById('gsdSlider').value = document.getElementById('gsdInput').value;
+        recalcFromGsd();
+    }
+
+    function onAltSliderChange() {
+        document.getElementById('altInput').value = document.getElementById('altSlider').value;
+        recalcFromAlt();
+    }
+
+    function onAltInputChange() {
+        document.getElementById('altSlider').value = document.getElementById('altInput').value;
+        recalcFromAlt();
+    }
+
+    function onSensorParamChange() {
+        document.getElementById('camSelect').value = 'custom';
+        document.getElementById('cameraPresetBadge').innerText = "Пользовательская";
+        recalcFromGsd();
+    }
+
+    function onOverlapXSliderChange() {
+        document.getElementById('overlapXInput').value = document.getElementById('overlapXSlider').value;
+        recalc();
+    }
+
+    function onOverlapXInputChange() {
+        document.getElementById('overlapXSlider').value = document.getElementById('overlapXInput').value;
+        recalc();
+    }
+
+    function onOverlapYSliderChange() {
+        document.getElementById('overlapYInput').value = document.getElementById('overlapYSlider').value;
+        recalc();
+    }
+
+    function onOverlapYInputChange() {
+        document.getElementById('overlapYSlider').value = document.getElementById('overlapYInput').value;
+        recalc();
+    }
+
+    // Точные значения H и GSD: поля ввода показывают округленные числа (0,1 м и 0,01 см),
+    // а расчет и проверки ведутся по неокругленным, иначе ΔH/H на границе допуска искажается.
+    let exactH = null, exactGsd = null;
+
+    // Пересчет Высоты по GSD
+    function recalcFromGsd() {
+        const gsd = getSafeNum('gsdInput', 2.5);
+        const f = getSafeNum('focalInput', 12.29);
+        const p = getSafeNum('pixSizeInput', 3.3);
+
+        const H = (gsd * 10 * f) / p;
+        exactH = H; exactGsd = gsd;
+        document.getElementById('altInput').value = H.toFixed(1);
+        document.getElementById('altSlider').value = Math.min(Math.max(H, 15), 500);
+        recalc();
+    }
+
+    // Пересчет GSD по Высоте
+    function recalcFromAlt() {
+        const H = getSafeNum('altInput', 100);
+        const f = getSafeNum('focalInput', 12.29);
+        const p = getSafeNum('pixSizeInput', 3.3);
+
+        const gsd = (H * p) / (f * 10);
+        exactH = H; exactGsd = gsd;
+        document.getElementById('gsdInput').value = gsd.toFixed(2);
+        document.getElementById('gsdSlider').value = Math.min(Math.max(gsd, 0.5), 15.0);
+        recalc();
+    }
+
+    // ГЛАВНЫЙ МАТЕМАТИЧЕСКИЙ ЦИКЛ РАСЧЕТА
+    function recalc() {
+        const imgW = getSafeNum('imgWInput', 5280);
+        const imgH = getSafeNum('imgHInput', 3956);
+        const { gsd, H } = getExactGeom();
+        const Px = getSafeNum('overlapXInput', 80);
+        const Py = getSafeNum('overlapYInput', 70);
+        const speed = getSafeNum('speedInput', 10.0);
+        const tExp = parseShutter(document.getElementById('shutterInput').value);
+        const dH = getSafeNum('reliefDiffInput', 15);
+        const baseDist = getSafeNum('baseDistInput', 12);
+        const baseDistLimit = getSafeNum('baseDistLimitInput', BASE_LIMIT_DEFAULT);
+        const terrainLimit = getSafeNum('terrainSelect', RELIEF_DEFAULT);
+
+        // Размеры кадра на земле
+        const Wg = (imgW * gsd) / 100;
+        const Hg = (imgH * gsd) / 100;
+
+        // Базисы
+        const Bx = Hg * (1 - Px / 100);
+        const By = Wg * (1 - Py / 100);
+
+        // Интервал и смаз
+        const dt = speed > 0 ? Bx / speed : 0;
+        const blurPix = (speed * 100 * tExp) / gsd;
+        const reliefRatio = H > 0 ? (dH / H) * 100 : 0;
+
+        // Обновление KPI
+        document.getElementById('kpiGsdVal').innerHTML = `${gsd.toFixed(2)} <span style="font-size: 1.5rem; font-weight: 600;">см/пикс</span>`;
+        document.getElementById('kpiAltText').innerText = `Высота фотографирования H = ${H.toFixed(1)} м`;
+        document.getElementById('flightQuickBadge').innerText = `H = ${H.toFixed(0)} м | ${Px.toFixed(0)}/${Py.toFixed(0)}%`;
+
+        document.getElementById('tileFootprint').innerText = `${Wg.toFixed(0)}×${Hg.toFixed(0)} м`;
+        document.getElementById('tileBx').innerText = `${Bx.toFixed(1)} м`;
+        document.getElementById('tileBy').innerText = `${By.toFixed(1)} м`;
+        document.getElementById('tileDt').innerText = `${dt.toFixed(2)} с`;
+
+        const dtDesc = document.getElementById('tileDtDesc');
+        if (dt < 1.0) {
+            dtDesc.innerText = "⚠️ Слишком частый спуск (<1с)";
+            dtDesc.style.color = "var(--danger)";
+        } else {
+            dtDesc.innerText = "Норма затвора";
+            dtDesc.style.color = "var(--text-muted)";
+        }
+
+        document.getElementById('blurVal').innerText = `${blurPix.toFixed(2)} пикс`;
+        const blurStatus = document.getElementById('blurStatus');
+        if (blurPix <= SMEAR_MAX) {
+            blurStatus.innerHTML = `<span style='color:var(--success); font-weight:600;'>✓ Допуск ГОСТ Р 59328 (≤ ${SMEAR_MAX} пикс) выдержан.</span>`;
+        } else {
+            blurStatus.innerHTML = "<span style='color:var(--danger); font-weight:600;'>❌ Превышение! Риск смаза.</span>";
+        }
+
+        document.getElementById('reliefRatioVal').innerText = `${reliefRatio.toFixed(1)}%`;
+        const reliefStatus = document.getElementById('reliefRatioStatus');
+        const terrainName = terrainLimit <= 7 ? 'равнинной' : (terrainLimit <= 15 ? 'всхолмленной' : 'горной');
+        if (reliefRatio <= terrainLimit) {
+            reliefStatus.innerText = `✓ Допустимо для ${terrainName} местности (≤ ${terrainLimit}%, ГОСТ Р 59328 п. 6.2.1)`;
+            reliefStatus.style.color = "var(--success)";
+        } else {
+            reliefStatus.innerText = `⚠️ Превышен допуск ${terrainLimit}% для ${terrainName} местности — разделить участок или лететь с огибанием рельефа`;
+            reliefStatus.style.color = "var(--danger)";
+        }
+
+        renderVisualGraphics(H, Wg, Hg, Bx, By, Px, Py, gsd);
+        updateAuditChecks(gsd, Px, Py, blurPix, baseDist, reliefRatio, baseDistLimit, terrainLimit, H, Wg);
+    }
+
+    // ОТРИСОВКА ИЗОЛИРОВАННОЙ ГРАФИКИ (SVG + HTML ТЕКСТ)
+    // ДЕТАЛИЗИРОВАННАЯ ИНТЕРАКТИВНАЯ ГЕОМЕТРИЯ
+    // ТОЧНАЯ ИНТЕРАКТИВНАЯ ГЕОМЕТРИЯ (ДИНАМИЧЕСКИЙ РАСЧЕТ МАСШТАБА И ПЕРЕКРЫТИЙ)
+    function renderVisualGraphics(H, Wg, Hg, Bx, By, Px, Py, gsd) {
+        const container = document.getElementById('svgContainer');
+        if (!container) return;
+
+        const f = getSafeNum('focalInput', 12.29);
+        const imgW = getSafeNum('imgWInput', 5280);
+        const imgH = getSafeNum('imgHInput', 3956);
+        const pix = getSafeNum('pixSizeInput', 3.3);
+
+        // Углы поля зрения объектива (FOV) в градусах
+        const sensorW_mm = (imgW * pix) / 1000;
+        const sensorH_mm = (imgH * pix) / 1000;
+        const fovX = 2 * Math.atan(sensorW_mm / (2 * f)) * (180 / Math.PI);
+        const fovY = 2 * Math.atan(sensorH_mm / (2 * f)) * (180 / Math.PI);
+        const frameAreaHa = ((Wg * Hg) / 10000).toFixed(2);
+
+        if (currentVisualTab === 'pyramid') {
+            // 1. ДИНАМИЧЕСКАЯ ОБЪЕМНАЯ ПИРАМИДА (2.5D)
+            const x0 = 170, y0 = 30; // Вершина S (дрон)
+            const yCenter = 172;     // Высота центра основания
+            const hVis = yCenter - y0;
+
+            // Ширина основания масштабируется от реального угла FOV_x
+            const tanHalfFovX = Math.tan((fovX * Math.PI) / 360);
+            const wMid = Math.max(85, Math.min(240, 2 * hVis * tanHalfFovX * 0.72));
+
+            // Глубина основания зависит от пропорций сенсора (imgH / imgW) и ракурса
+            const aspectRatio = imgH / imgW;
+            const depth = Math.max(32, Math.min(75, wMid * aspectRatio * 0.62));
+
+            // Перспективное схождение лучей
+            const perspRatio = 0.26;
+            const wBack = wMid * (1 - perspRatio);
+            const wFront = wMid * (1 + perspRatio);
+            const yBack = Math.round(yCenter - depth / 2);
+            const yFront = Math.round(yCenter + depth / 2);
+
+            // Точки 4 углов основания на земле
+            const pBL = `${(x0 - wBack / 2).toFixed(1)},${yBack}`;
+            const pBR = `${(x0 + wBack / 2).toFixed(1)},${yBack}`;
+            const pFR = `${(x0 + wFront / 2).toFixed(1)},${yFront}`;
+            const pFL = `${(x0 - wFront / 2).toFixed(1)},${yFront}`;
+
+            container.innerHTML = `
+                <div class="geom-hud-card">
+                    <div class="geom-svg-box">
+                        <svg viewBox="0 0 340 240" width="100%" height="240">
+                            <defs>
+                                <linearGradient id="groundGrad" x1="0" y1="0" x2="1" y2="1">
+                                    <stop offset="0%" stop-color="#0f766e" stop-opacity="0.35"/>
+                                    <stop offset="100%" stop-color="#14b8a6" stop-opacity="0.12"/>
+                                </linearGradient>
+                            </defs>
+
+                            <!-- Горизонт / плоскость земли -->
+                            <line x1="15" y1="${yCenter}" x2="325" y2="${yCenter}" stroke="#334155" stroke-dasharray="3 3"/>
+                            
+                            <!-- Основание кадра на земле (строго по пропорциям сенсора и FOV) -->
+                            <polygon points="${pBL} ${pBR} ${pFR} ${pFL}" fill="url(#groundGrad)" stroke="#14b8a6" stroke-width="2"/>
+
+                            <!-- Задние лучи пирамиды (скрытые) -->
+                            <line x1="${x0}" y1="${y0}" x2="${(x0 - wBack / 2).toFixed(1)}" y2="${yBack}" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2 2"/>
+                            <line x1="${x0}" y1="${y0}" x2="${(x0 + wBack / 2).toFixed(1)}" y2="${yBack}" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="2 2"/>
+
+                            <!-- Высота H (оптическая ось) -->
+                            <line x1="${x0}" y1="${y0}" x2="${x0}" y2="${yCenter}" stroke="#f59e0b" stroke-width="1.8"/>
+                            <circle cx="${x0}" cy="${yCenter}" r="3" fill="#f59e0b"/>
+
+                            <!-- Передние лучи пирамиды -->
+                            <line x1="${x0}" y1="${y0}" x2="${(x0 - wFront / 2).toFixed(1)}" y2="${yFront}" stroke="#0284c7" stroke-width="1.6"/>
+                            <line x1="${x0}" y1="${y0}" x2="${(x0 + wFront / 2).toFixed(1)}" y2="${yFront}" stroke="#0284c7" stroke-width="1.6"/>
+
+                            <!-- Центр проекции (БВС) -->
+                            <circle cx="${x0}" cy="${y0}" r="7" fill="#ef4444"/>
+                            <circle cx="${x0}" cy="${y0}" r="13" fill="#ef4444" fill-opacity="0.25"/>
+                            <text x="${x0}" y="17" font-size="11" font-weight="bold" fill="#f8fafc" text-anchor="middle">БВС (S)</text>
+
+                            <!-- Размеры на чертеже -->
+                            <text x="${x0 + 8}" y="${Math.round((y0 + yCenter) / 2)}" font-size="11" font-weight="bold" fill="#f59e0b">H = ${H.toFixed(0)} м</text>
+                            <text x="${x0}" y="${yFront + 16}" font-size="11" font-weight="bold" fill="#38bdf8" text-anchor="middle">Ширина кадра Wg = ${Wg.toFixed(0)} м</text>
+                            <text x="${Math.min(320, (x0 + wFront / 2 + 8)).toFixed(0)}" y="${yCenter}" font-size="10" font-weight="bold" fill="#94a3b8">Hg = ${Hg.toFixed(0)} м</text>
+                        </svg>
+                    </div>
+                    <div class="geom-info-pane">
+                        <div style="font-weight:700; color:#0f766e; font-size:0.95rem; margin-bottom:0.2rem;">Геометрия поля зрения кадра</div>
+                        <div class="geom-info-item">
+                            <span>Угол обзора по ширине (FOV_x):</span>
+                            <span>${fovX.toFixed(1)}°</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Угол обзора по высоте (FOV_y):</span>
+                            <span>${fovY.toFixed(1)}°</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Площадь одиночного снимка:</span>
+                            <span>${frameAreaHa} га (${(Wg * Hg).toFixed(0)} м²)</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Оптический масштаб (1:m):</span>
+                            <span>1 : ${Math.round((H * 1000) / f)}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (currentVisualTab === 'overlap') {
+            // 2. МАТЕМАТИЧЕСКИ ТОЧНЫЕ ПЕРЕКРЫТИЯ И ГАЛСЫ
+            // Поперечный габарит кадра в SVG (по оси Y):
+            const frameH = 86;
+            // Продольный габарит кадра в SVG (по оси X, вдоль маршрута):
+            const frameW = Math.round(frameH * (imgH / imgW));
+
+            // Точный шаг между центрами проекций:
+            const stepX = frameW * (1 - Px / 100);
+            const stepY = frameH * (1 - Py / 100);
+
+            // Центрирование композиции в окне
+            const totalH = frameH + stepY;
+            const startY = Math.max(30, Math.round((205 - totalH) / 2));
+            const startX = 35;
+
+            // Координаты центров снимков Галса 1
+            const cx0 = startX + frameW / 2;
+            const cx1 = cx0 + stepX;
+            const cx2 = cx0 + 2 * stepX;
+            const flightLineY1 = startY + frameH / 2;
+
+            // Галс 2 (обратное направление)
+            const startY2 = startY + stepY;
+            const flightLineY2 = startY2 + frameH / 2;
+            const frame2X = cx1 - frameW / 2 + (stepX * 0.4);
+
+            container.innerHTML = `
+                <div class="geom-hud-card">
+                    <div class="geom-svg-box">
+                        <svg viewBox="0 0 340 240" width="100%" height="240">
+                            <defs>
+                                <pattern id="flightGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+                                    <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e293b" stroke-width="0.7"/>
+                                </pattern>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#flightGrid)"/>
+
+                            <!-- Кадры Галса 1 (взаимное перекрытие строго = Px%) -->
+                            <rect x="${startX}" y="${startY}" width="${frameW}" height="${frameH}" rx="3" fill="#10b981" fill-opacity="0.18" stroke="#10b981" stroke-width="1.5"/>
+                            <rect x="${startX + stepX}" y="${startY}" width="${frameW}" height="${frameH}" rx="3" fill="#10b981" fill-opacity="0.22" stroke="#10b981" stroke-width="1.5"/>
+                            <rect x="${startX + 2 * stepX}" y="${startY}" width="${frameW}" height="${frameH}" rx="3" fill="#10b981" fill-opacity="0.25" stroke="#10b981" stroke-width="1.5"/>
+
+                            <!-- Траектория Галса 1 -->
+                            <line x1="${startX - 15}" y1="${flightLineY1}" x2="${Math.max(260, cx2 + frameW / 2 + 10)}" y2="${flightLineY1}" stroke="#22c55e" stroke-width="2" stroke-dasharray="5 3"/>
+                            <polygon points="${Math.max(260, cx2 + frameW / 2 + 10)},${flightLineY1 - 4} ${Math.max(260, cx2 + frameW / 2 + 18)},${flightLineY1} ${Math.max(260, cx2 + frameW / 2 + 10)},${flightLineY1 + 4}" fill="#22c55e"/>
+
+                            <!-- Центры проекций (точки съемки) -->
+                            <circle cx="${cx0}" cy="${flightLineY1}" r="3.5" fill="#f8fafc" stroke="#15803d" stroke-width="1.5"/>
+                            <circle cx="${cx1}" cy="${flightLineY1}" r="3.5" fill="#f8fafc" stroke="#15803d" stroke-width="1.5"/>
+                            <circle cx="${cx2}" cy="${flightLineY1}" r="3.5" fill="#f8fafc" stroke="#15803d" stroke-width="1.5"/>
+
+                            <!-- Кадр Галса 2 (межмаршрутное перекрытие строго = Py%) -->
+                            <rect x="${frame2X}" y="${startY2}" width="${frameW}" height="${frameH}" rx="3" fill="#8b5cf6" fill-opacity="0.25" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="3 2"/>
+                            
+                            <!-- Траектория Галса 2 -->
+                            <line x1="${Math.max(260, cx2 + frameW / 2 + 10)}" y1="${flightLineY2}" x2="${startX - 15}" y2="${flightLineY2}" stroke="#a855f7" stroke-width="2" stroke-dasharray="5 3"/>
+                            <polygon points="${startX - 10},${flightLineY2 - 4} ${startX - 18},${flightLineY2} ${startX - 10},${flightLineY2 + 4}" fill="#a855f7"/>
+
+                            <!-- Размерная линия продольного базиса Bx -->
+                            <line x1="${cx0}" y1="${startY - 12}" x2="${cx1}" y2="${startY - 12}" stroke="#f59e0b" stroke-width="1.5"/>
+                            <line x1="${cx0}" y1="${startY - 16}" x2="${cx0}" y2="${startY - 8}" stroke="#f59e0b" stroke-width="1.5"/>
+                            <line x1="${cx1}" y1="${startY - 16}" x2="${cx1}" y2="${startY - 8}" stroke="#f59e0b" stroke-width="1.5"/>
+                            <text x="${(cx0 + cx1) / 2}" y="${startY - 18}" font-size="10" font-weight="bold" fill="#f59e0b" text-anchor="middle">Bx = ${Bx.toFixed(1)} м</text>
+
+                            <!-- Размерная линия межмаршрутного шага By -->
+                            <line x1="285" y1="${flightLineY1}" x2="285" y2="${flightLineY2}" stroke="#38bdf8" stroke-width="1.5"/>
+                            <line x1="281" y1="${flightLineY1}" x2="289" y2="${flightLineY1}" stroke="#38bdf8" stroke-width="1.5"/>
+                            <line x1="281" y1="${flightLineY2}" x2="289" y2="${flightLineY2}" stroke="#38bdf8" stroke-width="1.5"/>
+                            <text x="294" y="${(flightLineY1 + flightLineY2) / 2 + 3}" font-size="10" font-weight="bold" fill="#38bdf8">By = ${By.toFixed(1)} м</text>
+
+                            <!-- Подписи галсов -->
+                            <text x="35" y="224" font-size="10" fill="#94a3b8">Галс 1 (Px = ${Px.toFixed(0)}%) →</text>
+                            <text x="200" y="224" font-size="10" fill="#94a3b8">← Галс 2 (Py = ${Py.toFixed(0)}%)</text>
+                        </svg>
+                    </div>
+                    <div class="geom-info-pane">
+                        <div style="font-weight:700; color:#0f766e; font-size:0.95rem; margin-bottom:0.2rem;">Маршрутная топология</div>
+                        <div class="geom-info-item">
+                            <span>Продольное перекрытие ($P_x$):</span>
+                            <span>${Px.toFixed(0)}% (базис ${Bx.toFixed(1)} м)</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Поперечное перекрытие ($P_y$):</span>
+                            <span>${Py.toFixed(0)}% (галс ${By.toFixed(1)} м)</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Коэффициент стереобазиса ($B_x / H$):</span>
+                            <span>${(Bx / H).toFixed(2)} (${Bx / H >= 0.2 ? 'Отличная стереопара' : 'Узкий базис'})</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Кратность покрытия (в среднем):</span>
+                            <span>${((1 / (1 - Px / 100)) * (1 / (1 - Py / 100))).toFixed(1)}x лучей на точку</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        } else if (currentVisualTab === 'gcp') {
+            // 3. ЧЕРТЕЖ ОПОЗНАКА (ГОСТ Р 59562-2021 п. 8.3.10: D ≥ 8·GSD, b ≥ 1·GSD — минимумы; на чертеже показаны минимальные размеры)
+            const MK = RULES.control_points.marker;
+            const dCm = (MK.size_gsd * gsd).toFixed(1);
+            const bCm = (MK.beam_gsd * gsd).toFixed(1);
+            const dM = (MK.size_gsd * gsd / 100).toFixed(2);
+            const bM = (MK.beam_gsd * gsd / 100).toFixed(2);
+
+            const dPx = 144;      // Общий размах креста
+            const bPx = dPx * MK.beam_gsd / MK.size_gsd;  // пропорция D : b по п. 8.3.10
+            const halfD = dPx / 2;
+            const halfB = bPx / 2;
+
+            container.innerHTML = `
+                <div class="geom-hud-card">
+                    <div class="geom-svg-box">
+                        <svg viewBox="0 0 340 240" width="100%" height="240">
+                            <defs>
+                                <pattern id="cadGrid" width="15" height="15" patternUnits="userSpaceOnUse">
+                                    <path d="M 15 0 L 0 0 0 15" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+                                </pattern>
+                            </defs>
+                            <rect width="100%" height="100%" fill="url(#cadGrid)"/>
+
+                            <!-- Марка опознака (строгая пропорция 8 : 1) -->
+                            <g transform="translate(140, 120)">
+                                <!-- Горизонтальный луч (D x b) -->
+                                <rect x="-${halfD}" y="-${halfB}" width="${dPx}" height="${bPx}" fill="#020617" stroke="#38bdf8" stroke-width="1.5" rx="1"/>
+                                <!-- Вертикальный луч (b x D) -->
+                                <rect x="-${halfB}" y="-${halfD}" width="${bPx}" height="${dPx}" fill="#020617" stroke="#38bdf8" stroke-width="1.5" rx="1"/>
+                                
+                                <!-- Осевые штрихпунктирные линии -->
+                                <line x1="-${halfD + 18}" y1="0" x2="${halfD + 18}" y2="0" stroke="#f43f5e" stroke-width="0.8" stroke-dasharray="6 3"/>
+                                <line x1="0" y1="-${halfD + 18}" x2="0" y2="${halfD + 18}" stroke="#f43f5e" stroke-width="0.8" stroke-dasharray="6 3"/>
+
+                                <!-- Точка геодезического центрирования (керн) -->
+                                <circle cx="0" cy="0" r="3.5" fill="#ef4444"/>
+                                <circle cx="0" cy="0" r="1.5" fill="#ffffff"/>
+                            </g>
+
+                            <!-- Размерная линия габарита D -->
+                            <line x1="${140 - halfD}" y1="32" x2="${140 + halfD}" y2="32" stroke="#f59e0b" stroke-width="1.5"/>
+                            <line x1="${140 - halfD}" y1="26" x2="${140 - halfD}" y2="38" stroke="#f59e0b" stroke-width="1.5"/>
+                            <line x1="${140 + halfD}" y1="26" x2="${140 + halfD}" y2="38" stroke="#f59e0b" stroke-width="1.5"/>
+                            <text x="140" y="24" font-size="11" font-weight="bold" fill="#f59e0b" text-anchor="middle">D ≥ ${MK.size_gsd}·GSD (${dCm} см / ${dM} м)</text>
+
+                            <!-- Размерная линия ширины луча b -->
+                            <line x1="${140 - halfB}" y1="206" x2="${140 + halfB}" y2="206" stroke="#38bdf8" stroke-width="1.5"/>
+                            <line x1="${140 - halfB}" y1="200" x2="${140 - halfB}" y2="212" stroke="#38bdf8" stroke-width="1.5"/>
+                            <line x1="${140 + halfB}" y1="200" x2="${140 + halfB}" y2="212" stroke="#38bdf8" stroke-width="1.5"/>
+                            <text x="140" y="224" font-size="10" font-weight="bold" fill="#38bdf8" text-anchor="middle">b ≥ ${MK.beam_gsd}·GSD (${bCm} см / ${bM} м)</text>
+
+                            <!-- Указатель керна -->
+                            <text x="235" y="123" font-size="10" fill="#f43f5e">← Центр знака</text>
+                        </svg>
+                    </div>
+                    <div class="geom-info-pane">
+                        <div style="font-weight:700; color:#0f766e; font-size:0.95rem; margin-bottom:0.2rem;">Требования ГОСТ Р 59562 (п. 8.3.10)</div>
+                        <div class="geom-info-item">
+                            <span>Общий габарит знака (D):</span>
+                            <span>${dCm} × ${dCm} см (${dM} м)</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Ширина контрастного луча (b):</span>
+                            <span>${bCm} см (${bM} м)</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Центрирование марки (п. 8.3.9):</span>
+                            <span>≤ ${fmtNum(MK.centering_mm)} мм в масштабе плана и ≤ 1/10 СКП</span>
+                        </div>
+                        <div class="geom-info-item">
+                            <span>Характер требования:</span>
+                            <span>Минимумы: D ≥ ${MK.size_gsd}·GSD, b ≥ ${MK.beam_gsd}·GSD</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        renderMathSafe();
+    }
+
+    function updateAuditChecks(gsd, Px, Py, blurPix, baseDist, reliefRatio, baseDistLimit, terrainLimit, H, Wg) {
+        const container = document.getElementById('auditChecklistContainer');
+        if (!container) return;
+
+        const taskKey = document.getElementById('taskPresetSelect').value;
+        const taskRule = TASK_PRESETS[taskKey] || TASK_PRESETS.cadastral;
+        const req = requiredOverlaps(reliefRatio, H, Wg);
+        const gsdLimit = taskRule.normGsd != null ? taskRule.normGsd : taskRule.maxGsd;
+        const tblName = req.method === 'b2' ? 'табл. Б.2' : 'табл. Б.1';
+        const colName = req.mount === 'yes' ? 'с гироплатформой' : 'без гироплатформы';
+        const addTxt = req.add ? ` + ${req.add}% (БВС без аэрофотоустановки, п. 6.2.5)` : '';
+        const terrainCls = RULES.relief.classes.find(c => terrainLimit <= c.max_pct) || RULES.relief.classes[RULES.relief.classes.length - 1];
+        const terrainName = terrainCls.name;
+
+        const checks = [
+            {
+                title: "Пространственное разрешение GSD на местности",
+                norm: taskRule.normGsd != null
+                    ? `Рекомендуемо: GSD ≤ ${taskRule.normGsd.toFixed(1)} см/пикс; проектный порог пресета ≤ ${taskRule.maxGsd.toFixed(1)} см`
+                    : `Проектный порог пресета: GSD ≤ ${taskRule.maxGsd.toFixed(1)} см/пикс`,
+                val: `${gsd.toFixed(2)} см/пикс`,
+                pass: gsd <= gsdLimit + 0.005,
+                law: taskRule.gsdSrc
+            },
+            {
+                title: "Продольное перекрытие снимков (Px)",
+                norm: req.ok
+                    ? `Требуется Px ≥ ${req.px}% (${tblName}, ${req.row}, ${colName}${addTxt})`
+                    : `${req.row}: табличное значение не определено`,
+                val: `${Px.toFixed(0)}%`,
+                pass: req.ok && Px >= req.px,
+                law: (req.method === 'b2' ? RULES.overlap.b2.ref : RULES.overlap.b1.ref)
+            },
+            {
+                title: "Поперечное перекрытие снимков (Py)",
+                norm: req.ok
+                    ? `Требуется Py ≥ ${req.py}% (${tblName}, ${colName}${addTxt})`
+                    : `${req.row}: табличное значение не определено`,
+                val: `${Py.toFixed(0)}%`,
+                pass: req.ok && Py >= req.py,
+                law: (req.method === 'b2' ? RULES.overlap.b2.ref : RULES.overlap.b1.ref)
+            },
+            {
+                title: "Линейный сдвиг изображения (смаз кадра)",
+                norm: `Допуск: Δs ≤ ${SMEAR_MAX} пикселя`,
+                val: `${blurPix.toFixed(2)} пикс`,
+                pass: blurPix <= SMEAR_MAX,
+                law: RULES.smear.ref
+            },
+            {
+                title: "Удаление от базовой ГНСС-станции",
+                norm: `Допустимое удаление по табл. Д.1: ${baseDistLimit.toFixed(0)} км (введите значение для вашего назначения съемки и сечения рельефа)`,
+                val: `${baseDist.toFixed(1)} км`,
+                pass: baseDist <= baseDistLimit,
+                law: RULES.base_station.ref
+            },
+            {
+                title: "Относительный перепад высот рельефа участка (ΔH / H)",
+                norm: `Допуск для местности «${terrainName}»: ≤ ${terrainLimit}% (${RULES.relief.classes.map(c => `${c.max_pct}% ${c.name}`).join(', ')})`,
+                val: `${reliefRatio.toFixed(1)}%`,
+                pass: reliefRatio <= terrainLimit,
+                law: RULES.relief.ref
+            }
+        ];
+
+        if (req.ok && req.pyFormula != null) {
+            const need = Math.ceil(req.pyFormula);
+            checks.push({
+                title: "Поперечное перекрытие по эффективному поперечному углу захвата",
+                norm: `Py ≥ ${need}% — чтобы эффективный угол не превышал ${req.beta}° (By ≤ 2H·tg(β/2) = ${(2 * H * Math.tan(req.beta * Math.PI / 360)).toFixed(1)} м). Если расчет дает меньше табличного — берется табличное`,
+                val: `${Py.toFixed(0)}%`,
+                warn: Py < need,
+                info: Py >= need ? false : true,
+                pass: Py >= need,
+                law: RULES.overlap.effective_angle.ref
+            });
+        }
+
+        let allPassed = true;
+        let html = '';
+
+        checks.forEach(c => {
+            if (!c.info && !c.pass) allPassed = false;
+            const badge = c.info ?
+                '<span class="badge" style="background:#fffbeb; color:#b45309; border:1px solid #fde68a;">⚠️ Проверить</span>' :
+                (c.pass ?
+                '<span class="badge badge-green">✓ Соответствует</span>' :
+                '<span class="badge badge-red">❌ Нарушение допуска</span>');
+
+            html += `
+                <div style="background:#fff; border:1px solid var(--border); border-radius:6px; padding:0.65rem 0.85rem; display:flex; justify-content:space-between; align-items:center; gap:0.75rem;">
+                    <div>
+                        <div style="font-weight:700; font-size:0.88rem; color:#1e293b;">${c.title}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted);">${c.norm} (Факт: <strong>${c.val}</strong>)</div>
+                        <div style="font-size:0.7rem; color:var(--primary); font-weight:600;">Источник: ${c.law}</div>
+                    </div>
+                    <div style="flex-shrink:0;">${badge}</div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+
+        const mainBadge = document.getElementById('kpiStatusBadge');
+        if (mainBadge) {
+            if (allPassed) {
+                mainBadge.className = "badge badge-green";
+                mainBadge.innerText = "✓ Требования нормативов соблюдены";
+            } else {
+                mainBadge.className = "badge badge-red";
+                mainBadge.innerText = "⚠️ Есть отклонения от нормативов (см. вкладку аудит)";
+            }
+        }
+    }
+
+    // Расчет геодезического сгущения
+    function calcGeodesy() {
+        const area = getSafeNum('surveyAreaInput', 1.5);
+        const scale = getSafeNum('scaleSelectGeodesy', 500);
+        const preciseEl = document.getElementById('preciseCadastreCheck');
+        const precise = preciseEl ? preciseEl.checked : false;
+
+        const CP = RULES.control_points;
+        const sheetArea = CP.sheet_area_km2[scale] || CP.sheet_area_km2[500];
+        const totalSheets = Math.max(1, Math.ceil(area / sheetArea));
+
+        // п. 8.3.3: КТ на отдельно уравниваемый блок (здесь объект = один блок)
+        const usePrecise = precise || CP.block.precise_scales.includes(scale);
+        const kDiv = usePrecise ? CP.block.divisor_precise : CP.block.divisor_default;
+        const nKtBlock = Math.round(totalSheets / kDiv + CP.block.add);
+
+        // п. 8.3.5: общее число КТ на объект — 1 на 9 НЛ (1:500–1:2000), 1 на 4 НЛ (1:5000)
+        const sheetsPerKt = CP.object_sheets_per_kt[scale] || CP.object_sheets_per_kt[500];
+        const nKtObjectMin = Math.ceil(totalSheets / sheetsPerKt);
+        const nKtTotal = Math.max(nKtBlock, nKtObjectMin);
+        // п. 8.3.5: не менее 25% от требуемого общего числа КТ — полевые геодезические измерения
+        const nKtField = Math.ceil(nKtTotal * CP.field_share);
+
+        const card = document.getElementById('geodesyOutputCard');
+        if (card) {
+            card.innerHTML = `
+                <div style="font-weight:700; font-size:0.95rem; color:#0f766e; margin-bottom:0.6rem;">
+                    Объем контрольных точек (ГОСТ Р 59562-2021, пп. 8.3.3, 8.3.5)
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.6rem; text-align:center;">
+                    <div style="background:#fff; border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">Номенклатурных листов (НЛ)</div>
+                        <div style="font-size:1.6rem; font-weight:800; color:#1e293b;">${totalSheets}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">в масштабе 1:${scale}</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">КТ на уравниваемый блок</div>
+                        <div style="font-size:1.6rem; font-weight:800; color:#0f766e;">${nKtBlock}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">N = НЛ/${kDiv} + ${fmtNum(CP.block.add)} (п. 8.3.3)</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">Общее число КТ на объект</div>
+                        <div style="font-size:1.6rem; font-weight:800; color:#1e293b;">${nKtTotal}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">не менее 1 на ${sheetsPerKt} НЛ (п. 8.3.5)</div>
+                    </div>
+                    <div style="background:#fff; border:1px solid var(--border); padding:0.6rem; border-radius:6px;">
+                        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:700;">Из них полевых КТ</div>
+                        <div style="font-size:1.6rem; font-weight:800; color:#ea580c;">${nKtField}</div>
+                        <div style="font-size:0.7rem; color:var(--text-muted);">не менее ${Math.round(CP.field_share * 100)}% от общего числа (п. 8.3.5)</div>
+                    </div>
+                </div>
+                <div style="margin-top:0.85rem; font-size:0.8rem; line-height:1.45; color:#334155;">
+                    📌 <strong>Правила размещения:</strong> КТ располагают равномерно по площади блока (п. 8.3.3); расчет выше принимает весь объект за один уравниваемый блок. Контрольные опознаки — четкие контуры на поверхности земли, опознаваемые с погрешностью ≤ 0,1 мм в масштабе плана (углы покрытий, люки, разметка — п. 8.3.8); при их отсутствии — маркировка (п. 8.3.9, 8.3.10). Линейные объекты одним маршрутом: опорные опознаки через каждые 25 базисов, в точках поворота и не менее 5 точек на объект (п. 8.3.4). Для кадастра и крупных масштабов рекомендуется одновременно не менее двух базовых станций (п. 8.2.1).
+                </div>
+            `;
+        }
+    }
+
+    // Открытие Паспорта АФС
+    function showActModal() {
+        const modal = document.getElementById('actModal');
+        const body = document.getElementById('actModalBody');
+        if (!modal || !body) return;
+
+        const { gsd, H } = getExactGeom();
+        const Px = getSafeNum('overlapXInput', 80);
+        const Py = getSafeNum('overlapYInput', 70);
+        const camBadge = document.getElementById('cameraPresetBadge');
+        const cam = camBadge ? camBadge.innerText : 'Аэрофотокамера';
+        const focal = getSafeNum('focalInput', 12.29);
+        const speed = getSafeNum('speedInput', 10.0);
+        const shutter = document.getElementById('shutterInput') ? document.getElementById('shutterInput').value : '1/1000';
+
+        body.innerHTML = `
+            <table style="width:100%; border-collapse:collapse; margin-bottom:1rem;" class="norm-table">
+                <tr><th colspan="2" style="text-align:center; background:#f1f5f9;">ПАСПОРТ АЭРОФОТОСЪЕМКИ (АФС)</th></tr>
+                <tr><td style="width:40%;">Объект съемки:</td><td>Участок инженерных изысканий / Кадастровый квартал</td></tr>
+                <tr><td>Используемый БАС / Комплекс:</td><td>Беспилотное воздушное судно с полезной нагрузкой ${cam}</td></tr>
+                <tr><td>Фокусное расстояние объектива:</td><td>${focal.toFixed(2)} мм</td></tr>
+                <tr><td>Номинальное разрешение (GSD):</td><td><strong>${gsd.toFixed(2)} см/пикс</strong></td></tr>
+                <tr><td>Проектная высота полета (H):</td><td><strong>${H.toFixed(1)} м</strong> над средней плоскостью</td></tr>
+                <tr><td>Перекрытия продольное / поперечное:</td><td>${Px.toFixed(0)}% / ${Py.toFixed(0)}%</td></tr>
+                <tr><td>Скорость полета / Выдержка:</td><td>${speed.toFixed(1)} м/с / ${shutter} сек</td></tr>
+                <tr><td>Система координат / Система высот:</td><td>МСК региона / Балтийская 1977 г.</td></tr>
+                <tr><td>Метод спутниковых определений:</td><td>Бортовой двухчастотный GNSS PPK/RTK приемник</td></tr>
+            </table>
+            <div style="font-size:0.8rem; color:#475569; margin-top:0.5rem;">
+                Материалы аэрофотосъемки соответствуют техническим условиям ГОСТ Р 59328-2021 и ГОСТ Р 59562-2021. Материалы подготовлены к передаче в отдел фотограмметрической обработки.
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:2rem;">
+                <div>Внешний пилот (оператор БАС): _________________</div>
+                <div>Начальник партии / ГИП: _________________</div>
+            </div>
+        `;
+
+        modal.style.display = 'flex';
+    }
+
+    // Закрытие модального окна
+    function closeActModal() {
+        const modal = document.getElementById('actModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    // Экспорт конфигурации в JSON-файл
+    function exportConfigJson() {
+        const config = {
+            task: document.getElementById('taskPresetSelect') ? document.getElementById('taskPresetSelect').value : '',
+            camera: document.getElementById('cameraPresetBadge') ? document.getElementById('cameraPresetBadge').innerText : '',
+            focal_mm: getSafeNum('focalInput', 12.29),
+            img_width_px: parseInt(getSafeNum('imgWInput', 5280)),
+            img_height_px: parseInt(getSafeNum('imgHInput', 3956)),
+            pixel_size_um: getSafeNum('pixSizeInput', 3.3),
+            gsd_cm: +getExactGeom().gsd.toFixed(4),
+            altitude_m: +getExactGeom().H.toFixed(3),
+            overlap_x_percent: getSafeNum('overlapXInput', 80),
+            overlap_y_percent: getSafeNum('overlapYInput', 70),
+            speed_m_s: getSafeNum('speedInput', 10.0),
+            shutter_speed: document.getElementById('shutterInput') ? document.getElementById('shutterInput').value : '1/1000',
+            terrain_relief_limit_percent: getSafeNum('terrainSelect', RELIEF_DEFAULT),
+            base_distance_km: getSafeNum('baseDistInput', 12),
+            base_distance_limit_km: getSafeNum('baseDistLimitInput', BASE_LIMIT_DEFAULT),
+            export_timestamp: new Date().toISOString()
+        };
+
+        const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `uav_flight_plan_${config.gsd_cm}cm.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    // Экспорт расчетов в Excel (формат CSV с UTF-8 BOM для автоматического открытия русским Excel)
+    // Экспорт расчетов в настоящий файл Excel (.xlsx)
+    function exportConfigExcel() {
+        if (typeof XLSX === 'undefined') {
+            alert('Библиотека Excel еще не загрузилась. Проверьте интернет-соединение.');
+            return;
+        }
+
+        const task = document.getElementById('taskPresetSelect') ? document.getElementById('taskPresetSelect').options[document.getElementById('taskPresetSelect').selectedIndex].text : '';
+        const cam = document.getElementById('cameraPresetBadge') ? document.getElementById('cameraPresetBadge').innerText : '';
+        const f = getSafeNum('focalInput', 12.29);
+        const imgW = parseInt(getSafeNum('imgWInput', 5280));
+        const imgH = parseInt(getSafeNum('imgHInput', 3956));
+        const pix = getSafeNum('pixSizeInput', 3.3);
+        const { gsd, H } = getExactGeom();
+        const Px = getSafeNum('overlapXInput', 80);
+        const Py = getSafeNum('overlapYInput', 70);
+        const speed = getSafeNum('speedInput', 10.0);
+        const shutter = document.getElementById('shutterInput') ? document.getElementById('shutterInput').value : '1/1000';
+        const dH = getSafeNum('reliefDiffInput', 15);
+        const baseDist = getSafeNum('baseDistInput', 12);
+        const baseDistLimit = getSafeNum('baseDistLimitInput', BASE_LIMIT_DEFAULT);
+        const terrainLimit = getSafeNum('terrainSelect', RELIEF_DEFAULT);
+        const reqOv = requiredOverlaps(H > 0 ? (dH / H) * 100 : 0, H, (imgW * gsd) / 100);
+        const reqTxtX = reqOv.ok ? `Требуется >= ${reqOv.px}% (ГОСТ Р 59328-2021 п. 6.2.5, ${reqOv.table}, ${reqOv.row})` : `${reqOv.row}`;
+        const reqTxtY = reqOv.ok ? `Требуется >= ${reqOv.py}% (${reqOv.table})` + (reqOv.pyFormula != null ? `; по эфф. углу ${reqOv.beta}°: >= ${Math.ceil(reqOv.pyFormula)}%` : '') : `${reqOv.row}`;
+
+        // Расчетные величины
+        const Wg = Number(((imgW * gsd) / 100).toFixed(1));
+        const Hg = Number(((imgH * gsd) / 100).toFixed(1));
+        const Bx = Number((((imgH * gsd) / 100) * (1 - Px / 100)).toFixed(1));
+        const By = Number((((imgW * gsd) / 100) * (1 - Py / 100)).toFixed(1));
+        const tExp = parseShutter(shutter);
+        const dt = Number((speed > 0 ? (Bx / speed) : 0).toFixed(2));
+        const blurPix = Number(((speed * 100 * tExp) / gsd).toFixed(2));
+        const reliefRatio = (H > 0 ? (dH / H) * 100 : 0).toFixed(1);
+        const dMarkCm = Number((RULES.control_points.marker.size_gsd * gsd).toFixed(1));
+        const bMarkCm = Number((RULES.control_points.marker.beam_gsd * gsd).toFixed(1));
+
+        // Массив строк таблицы Excel
+        const data = [
+            ["ОТЧЕТ РАСЧЕТА ПАРАМЕТРОВ АЭРОФОТОСЪЕМКИ (АФС)"],
+            ["Дата и время расчета", new Date().toLocaleString('ru-RU')],
+            ["Целевая задача", task],
+            [],
+            ["1. ПАРАМЕТРЫ СЪЕМОЧНОЙ СИСТЕМЫ И КАМЕРЫ", "Значение", "Ед. изм.", "Норматив / Примечание"],
+            ["Модель камеры / полезная нагрузка", cam, "-", "ГОСТ Р 71886-2024"],
+            ["Фокусное расстояние (f)", Number(f.toFixed(2)), "мм", "Паспорт АФК"],
+            ["Размер матрицы (ширина)", imgW, "пикс", "Сенсор"],
+            ["Размер матрицы (высота)", imgH, "пикс", "Сенсор"],
+            ["Физический размер пикселя (p)", Number(pix.toFixed(2)), "мкм", "ГОСТ Р 59328-2021"],
+            [],
+            ["2. ПОЛЕТНЫЕ ПАРАМЕТРЫ И ГЕОМЕТРИЯ СЪЕМКИ", "Значение", "Ед. изм.", "Норматив / Примечание"],
+            ["Пространственное разрешение (GSD)", Number(gsd.toFixed(2)), "см/пикс", "ГОСТ Р 59562-2021 п. 6.2.3, прил. Б (рекомендуемое)"],
+            ["Высота полета над средней плоскостью (H)", Number(H.toFixed(1)), "м", "Расчет через f и p"],
+            ["Продольное перекрытие снимков (Px)", Number(Px.toFixed(0)), "%", reqTxtX],
+            ["Поперечное перекрытие снимков (Py)", Number(Py.toFixed(0)), "%", reqTxtY],
+            ["Продольный базис съемки (Bx)", Bx, "м", "Шаг срабатывания затвора"],
+            ["Межмаршрутное расстояние (By)", By, "м", "Расстояние между галсами"],
+            ["Ширина полосы захвата кадра (Wg)", Wg, "м", "Покрытие по средней плоскости"],
+            ["Высота захвата кадра (Hg)", Hg, "м", "Покрытие по средней плоскости"],
+            ["Скорость полета БВС (V)", Number(speed.toFixed(1)), "м/с", "Полетное задание"],
+            ["Выдержка затвора (t_exp)", shutter, "с", "Приоритет выдержки"],
+            ["Интервал съемки (dt)", dt, "с", dt < 1.0 ? 'ВНИМАНИЕ: Слишком частый спуск (<1с)' : 'В норме'],
+            ["Линейный сдвиг (смаз кадра)", blurPix, "пикс", (blurPix <= SMEAR_MAX ? `Допуск <= ${SMEAR_MAX} пикс выдержан` : 'ПРЕВЫШЕНИЕ ДОПУСКА') + ` (${RULES.smear.ref})`],
+            ["Макс. перепад высот на участке (dH)", Number(dH), "м", `Относительный: ${reliefRatio}% (допуск ${terrainLimit}%, ГОСТ Р 59328-2021 п. 6.2.1)`],
+            ["Удаление от базовой ГНСС-станции", Number(baseDist), "км", (baseDist <= baseDistLimit ? 'В пределах' : 'ПРЕВЫШЕНИЕ') + ` допустимого ${baseDistLimit} км (ГОСТ Р 59562-2021 табл. Д.1)`],
+            [],
+            ["3. ТРЕБОВАНИЯ К НАЗЕМНЫМ ОПОЗНАКАМ (ОПО / КТ)", "Значение", "Ед. изм.", "Норматив ГОСТ Р 59562-2021"],
+            [`Минимальный габарит марки (D >= ${RULES.control_points.marker.size_gsd}*GSD)`, dMarkCm, "см", "п. 8.3.10 (минимум)"],
+            [`Минимальная ширина луча марки (b >= ${RULES.control_points.marker.beam_gsd}*GSD)`, bMarkCm, "см", "п. 8.3.10 (минимум)"]
+        ];
+
+        // Создание книги и листа
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(data);
+
+        // Задание ширины колонок в таблице
+        ws['!cols'] = [
+            { wch: 44 },
+            { wch: 22 },
+            { wch: 12 },
+            { wch: 36 }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, ws, "Параметры АФС");
+        XLSX.writeFile(wb, `Параметры_АФС_GSD_${gsd}см.xlsx`);
+    }
+</script>
+
+<div id="actModal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(15,23,42,0.6); z-index:9999; justify-content:center; align-items:center; padding:1rem;">
+    <div style="background:#fff; width:100%; max-width:850px; max-height:90vh; border-radius:8px; display:flex; flex-direction:column; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.85rem 1.25rem; border-bottom:1px solid var(--border); background:#f8fafc;">
+            <h3 style="font-size:1.1rem; font-weight:700;">Паспорт аэрофотосъемки (ГОСТ Р 59328-2021 Приложение Е)</h3>
+            <button onclick="closeActModal()" style="background:none; border:none; font-size:1.4rem; cursor:pointer;">&times;</button>
+        </div>
+        <div style="padding:1.5rem; overflow-y:auto; font-size:0.88rem; line-height:1.6;" id="actModalBody">
+            <!-- Заполняется динамически -->
+        </div>
+        <div style="padding:0.75rem 1.25rem; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:0.5rem; background:#f8fafc;">
+            <button class="btn-export" onclick="window.print()">Распечатать</button>
+            <button class="btn-export btn-export-green" onclick="closeActModal()">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
